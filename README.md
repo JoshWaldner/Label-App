@@ -18,3 +18,4 @@ A point to remember, I didnt make it super easy and plug and play. It might or m
 5. run android app and in settings enter your computer ip.
 
 you may use this addin in any way you like as is, whatever is here on github is free to use on the agreement that none of it will be sold for profit in any way possible. if you want the source code for what is not on here, reach out to me at joshwaldner.sp@gmail.com
+if you find this useful, you can buy me a coffee: https://ko-fi.com/joshwaldner
