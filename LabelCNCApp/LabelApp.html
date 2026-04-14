@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taracon Label App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+            background-color: rgb(21, 52, 117);
+            color: white;
+        }
+
+        header,
+        footer {
+            background: #333947;
+            padding: 1rem;
+            color: white;
+        }
+
+        main {
+            margin: 1rem 0;
+        }
+
+        button {
+            background: #555;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #777;
+        }
+
+        input,
+        select {
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        select#Sheets {
+            background: #555;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+
+        select#Sheets:hover {
+            background: #777;
+        }
+
+        svg {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            height: auto;
+        }
+
+
+        #DateTime {
+            position: absolute;
+            right: 10%;
+            top: 10%;
+            transform: translateY(-50%);
+        }
+        
+
+
+
+        /* Hide all pages by default */
+        .page {
+            display: none;
+        }
+
+        /* Show active page */
+        .active {
+            display: block;
+        }
+
+        .dynamic-button {
+            display: block;
+            width: 100%;
+            padding: 0.75rem 1rem;
+            /* bigger click area */
+            margin: 0.5rem 0;
+            /* spacing between buttons */
+            background-color: #4caf50;
+            /* nice green */
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            text-align: left;
+            /* align text nicely */
+            transition: background 0.3s, transform 0.2s;
+        }
+
+        .dynamic-button:hover {
+            background-color: #45a049;
+            /* slightly darker on hover */
+            transform: translateY(-1px);
+        }
+        /* Trash icon hover effect */
+        .delete-btn svg {
+            transition: transform 0.2s ease, fill 0.2s ease;
+        }
+
+        .delete-btn:hover svg {
+            transform: rotate(15deg) scale(1.5); /* wiggle & grow slightly */
+            fill: #c0392b; /* darker red on hover */
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <button onclick="goBack()">&lt;&lt;&lt;</button>
+        <div id="DateTime"></div>
+        <h1 style="text-align:center;" id="pageTitle">Jobs</h1>
+        
+    </header>
+
+    <main>
+        <!-- Page 3: SVG -->
+        <div id="page3" class="page">
+            <svg id="sheetSvg" xmlns="http://www.w3.org/2000/svg" width="100%" style="background:#1d2d58;"></svg>
+            <div id="selectedPart"></div>
+            
+        </div>
+
+        <!-- Page 2: Non-SVG -->
+        <div id="Sheets" class="page">
+            <div id="SheetsButtons"></div> <!-- container for folder/file buttons -->
+        </div>
+
+        <!-- Page 1: Non-SVG -->
+        <div id="JobsPage" class="page active">
+        </div>
+
+    </main>
+
+    <footer style="display:flex; justify-content:space-between; align-items:center;">
+
+    </footer>
+
+    <script>
+        let currentPage = 'JobsPage';
+        let selectedFolder = null;
+        let currentFolder = "";
+        let currentFile = "";
+
+        // Build Page 1 buttons dynamically from Python server
+        fetch('/folders')
+            .then(res => res.json())
+            .then(data => {
+                buildJobsPage(data)
+            })
+            .catch(err => console.error("Failed to fetch folders:", err));
+        function buildJobsPage(foldersData) {
+            const JobsPage = document.getElementById('JobsPage');
+            JobsPage.innerHTML = '';
+
+            Object.keys(foldersData.folders).forEach(folder => {
+                const btn = document.createElement('button');
+                btn.classList.add('dynamic-button');
+                btn.style.position = "relative"; // allow positioning of delete button
+
+                // Folder name display
+                btn.innerHTML = `
+                    <div>${folder}</div>
+                    <span class="delete-btn" style="
+                        position: absolute;
+                        right: 8px;
+                        top: 50%;
+                        transform: translateY(-50%);
+                        cursor: pointer;
+                        width: 18px;
+                        height: 18px;
+                    ">
+                        <svg viewBox="0 0 24 24" fill="#e74c3c" width="18" height="18">
+                            <path d="M3 6h18v2H3V6zm2 3h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9zm5 3v6h2v-6H10zm4 0v6h2v-6h-2zM9 4V2h6v2h5v2H4V4h5z"/>
+                        </svg>
+                    </span>
+                `;
+
+                // Delete functionality
+                const deleteBtn = btn.querySelector(".delete-btn");
+                deleteBtn.addEventListener("click", (e) => {
+                    e.stopPropagation(); // prevent opening the folder
+                    if (confirm(`Delete folder "${folder}" and all its files?`)) {
+                        fetch(`/delete-folder?folder=${encodeURIComponent(folder)}`, { method: "DELETE" })
+                            .then(res => res.json())
+                            .then(res => {
+                                if (res.status === "ok") btn.remove();
+                                else alert("Failed to delete folder: " + (res.message || ""));
+                            })
+                            .catch(err => console.error(err));
+                    }
+                });
+
+                // Clicking the main button opens the folder
+                btn.addEventListener("click", () => {
+                    const files = foldersData.folders[folder];
+                    selectedFolder = folder;
+                    currentFolder = folder;
+                    buildPage2(files);
+                    goToPage('Sheets', folder);
+                });
+
+                JobsPage.appendChild(btn);
+            });
+        }
+        function buildPage2(files) {
+            const page2 = document.getElementById('Sheets');
+            page2.innerHTML = '';
+
+            files.forEach(file => {
+                const btn = document.createElement('button');
+                btn.classList.add('dynamic-button');
+                btn.style.position = "relative"; // allow positioning of delete button
+
+                // Fetch JSON to get the Date from stock
+                fetch(`/Data/${selectedFolder}/${file}`)
+                    .then(res => res.json())
+                    .then(json => {
+                        // Store JSON in button dataset for click
+                        btn.dataset.json = JSON.stringify(json);
+                        const date = json.stock?.[0]?.Date || "";
+                        const formattedDate = new Date(date).toLocaleString(undefined, {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+
+                        // Add HTML inside button: name + timestamp + delete
+                        btn.innerHTML = `
+                            <div>${file.replace(".json", "")}</div>
+                            <div style="font-size: 0.8em; color: #ddd;">${formattedDate}</div>
+                            <span class="delete-btn" style="
+                                position: absolute;
+                                right: 8px;
+                                top: 50%;
+                                transform: translateY(-50%);
+                                cursor: pointer;
+                                width: 18px;
+                                height: 18px;
+                            ">
+                                <svg viewBox="0 0 24 24" fill="#e74c3c" width="18" height="18">
+                                    <path d="M3 6h18v2H3V6zm2 3h14v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9zm5 3v6h2v-6H10zm4 0v6h2v-6h-2zM9 4V2h6v2h5v2H4V4h5z"/>
+                                </svg>
+                            </span>
+                        `;
+
+                        
+
+                        // Delete functionality
+                        const deleteBtn = btn.querySelector(".delete-btn");
+                        deleteBtn.addEventListener("click", (e) => {
+                            e.stopPropagation(); // prevent opening the sheet
+                            if (confirm(`Delete ${file}?`)) {
+                                // Call server to delete file (replace with your endpoint)
+                                fetch(`/delete?folder=${encodeURIComponent(selectedFolder)}&file=${encodeURIComponent(file)}`, { method: "DELETE" })
+                                    .then(res => {
+                                        if (res.ok) {
+                                            // Remove button from DOM
+                                            btn.remove();
+                                        } else {
+                                            alert("Failed to delete file.");
+                                        }
+                                    })
+                                    .catch(err => console.error(err));
+                            }
+                        });
+                    });
+
+                // On click, load data and go to page3
+                btn.addEventListener("click", () => {
+                    const json = JSON.parse(btn.dataset.json);
+                    data = json;
+                    currentFile = file;
+                    goToPage('page3', file.replace(".json", ""));
+                    drawSheet();
+                });
+
+                page2.appendChild(btn);
+            });
+        }
+
+        function goToPage(pageId, Name) {
+            document.getElementById(currentPage).classList.remove('active');
+            document.getElementById(pageId).classList.add('active');
+            currentPage = pageId;
+            document.getElementById('pageTitle').textContent = Name;
+            history.pushState({pageId, Name}, Name, `#${pageId}`);
+        }
+
+        window.addEventListener('popstate', (event) => {
+            if (event.state) {
+                const { pageId, Name } = event.state;
+                document.getElementById(currentPage).classList.remove('active');
+                document.getElementById(pageId).classList.add('active');
+                currentPage = pageId;
+                document.getElementById('pageTitle').textContent = Name;
+            } else {
+                // No state? fallback to JobsPage
+                goToPage('JobsPage', "Jobs");
+            }
+        });
+        function goBack() {
+
+            if (currentPage === 'Sheets')
+                goToPage('JobsPage', "Jobs");
+                
+
+            else if (currentPage === 'page3')
+                goToPage('Sheets', currentFolder);
+        }
+
+        // Page 1 SVG logic
+        let data = {};
+        // Draw SVG sheet
+        function drawSheet() {
+            const svg = document.getElementById('sheetSvg');
+            svg.innerHTML = "";
+            if (!data || !data.stock || !data.parts) return;
+
+            const stockPoints = data.stock[0].points;
+            const xs = stockPoints.map(p => p.x), ys = stockPoints.map(p => p.y);
+            const minX = Math.min(...xs), minY = Math.min(...ys);
+            const width = Math.max(...xs) - minX, height = Math.max(...ys) - minY;
+            const offsetX = minX, offsetY = minY;
+
+            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+            data.parts.forEach((part, index) => {
+                const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                group.setAttribute("class", "part");
+                group.dataset.index = index;
+
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                let d = part.geometry.outer.map((p, i) => (i === 0 ? "M" : "L") + (p.x - offsetX) + " " + (p.y - offsetY)).join(" ") + " Z ";
+                (part.geometry.holes || []).forEach(loop => {
+                    d += loop.map((p, i) => (i === 0 ? "M" : "L") + (p.x - offsetX) + " " + (p.y - offsetY)).join(" ") + " Z ";
+                });
+                path.setAttribute("d", d);
+                path.setAttribute("fill", "#4caf50");
+                path.setAttribute("data-fill", "#4caf50");
+                path.setAttribute("stroke", "#fff");
+                path.setAttribute("stroke-width", "0");
+                path.setAttribute("fill-rule", "evenodd");
+                group.appendChild(path);
+
+                (part.operations?.mill || []).forEach(loop => {
+                    const mill = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    mill.setAttribute("d", loop.map((p, i) => (i === 0 ? "M" : "L") + (p.x - offsetX) + " " + (p.y - offsetY)).join(" "));
+                    mill.setAttribute("fill", "#2196f3");
+                    mill.setAttribute("data-fill", "#2196f3");
+                    mill.setAttribute("stroke", "#2196f3");
+                    mill.setAttribute("stroke-width", "0");
+                    group.appendChild(mill);
+                });
+
+                (part.operations?.miter || []).forEach(loop => {
+                    const miter = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    miter.setAttribute("d", loop.map((p, i) => (i === 0 ? "M" : "L") + (p.x - offsetX) + " " + (p.y - offsetY)).join(" "));
+                    miter.setAttribute("fill", "#ff9800");
+                    miter.setAttribute("data-fill", "#ff9800");
+                    miter.setAttribute("stroke", "#ff9800");
+                    miter.setAttribute("stroke-width", "0");
+                    group.appendChild(miter);
+                });
+
+                // Label
+                let longestLen = 0;
+                let angle = 0;
+
+                const pts = part.geometry.outer;
+
+                for (let i = 0; i < pts.length; i++) {
+                    const p1 = pts[i];
+                    const p2 = pts[(i + 1) % pts.length];
+
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const len = Math.hypot(dx, dy);
+
+                    if (len > longestLen) {
+                        longestLen = len;
+                        angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                    }
+                }
+                const cx = part.geometry.outer.reduce((s, p) => s + p.x, 0) / part.geometry.outer.length - offsetX;
+                const cy = part.geometry.outer.reduce((s, p) => s + p.y, 0) / part.geometry.outer.length - offsetY;
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("x", cx);
+                text.setAttribute("y", cy);
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("dy", ".35em");
+                text.setAttribute("fill", "black");
+                text.setAttribute("font-size", "6px");
+                text.setAttribute("transform", `rotate(${angle}, ${cx}, ${cy})`);
+                text.textContent = part.name;
+                group.appendChild(text);
+
+                // Click selection
+                const selectedDiv = document.getElementById("selectedPart");
+                selectedDiv.textContent = "Nothing selected";
+                selectedDiv.style.fontSize = "1rem";
+                selectedDiv.style.textAlign = "center";
+                selectedDiv.style.background = ""
+                group.addEventListener("click", () => {
+                    const isSelected = group.dataset.selected === "true";
+                    const selectedDiv = document.getElementById("selectedPart");
+
+                    // Deselect all parts
+                    document.querySelectorAll(".part").forEach(g => {
+                        g.dataset.selected = "false";
+                        g.querySelectorAll("path").forEach(p => p.setAttribute("fill", p.dataset.fill));
+                    });
+
+                    if (!isSelected) {
+                        group.dataset.selected = "true";
+                        group.querySelectorAll("path").forEach(p => p.setAttribute("fill", "#ff0000"));
+                        selectedDiv.textContent = data.parts[group.dataset.index].name;
+
+                        // Make selectedDiv fill width and scale text
+                        selectedDiv.style.width = "100%";                        
+                        selectedDiv.style.whiteSpace = "nowrap";
+                        selectedDiv.style.background = "orange";
+
+                        fitTextToWidth(selectedDiv);
+                        
+
+                    } else {
+                        selectedDiv.textContent = "Nothing selected";
+                        selectedDiv.style.fontSize = "1rem";
+                        selectedDiv.style.background = ""
+                    }
+                });
+
+                svg.appendChild(group);
+            });
+        }
+
+        document.getElementById('jsonFilePage1')?.addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                data = JSON.parse(e.target.result);
+                drawSheet();
+            };
+            reader.readAsText(file);
+        });
+
+        // JSON inputs for pages 2 and 3
+        document.getElementById('jsonFilePage2')?.addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const data = JSON.parse(e.target.result);
+                alert('JSON loaded on Page 2');
+                console.log(data);
+            };
+            reader.readAsText(file);
+        });
+
+        document.getElementById('jsonFilePage3')?.addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const data = JSON.parse(e.target.result);
+                alert('JSON loaded on Page 3');
+                console.log(data);
+            };
+            reader.readAsText(file);
+        });
+
+        function fitTextToWidth(el, maxSize = 40, minSize = 10) {
+            let size = maxSize;
+            el.style.fontSize = size + "px";
+            while (el.scrollWidth > el.clientWidth && size > minSize) {
+                size -= 1;
+                el.style.fontSize = size + "px";
+            }
+        }
+
+        function updateDateTime() {
+            const now = new Date();
+            const formatted = now.toLocaleString();
+            document.getElementById("DateTime").textContent = formatted
+
+        }
+        updateDateTime();
+        setInterval(updateDateTime, 1000)
+    </script>
+</body>
+
+</html>
